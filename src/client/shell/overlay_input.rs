@@ -281,6 +281,63 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
+    pub(super) fn open_command_palette_overlay(&mut self) {
+        self.overlay = Some(ClientShellOverlay::CommandPalette(
+            ClientCommandPaletteOverlay {
+                query: String::new(),
+                selected: 0,
+            },
+        ));
+    }
+
+    fn command_palette_matches(&self, query: &str) -> Vec<crate::input::PaletteEntry> {
+        crate::input::filter_palette_entries(
+            crate::input::palette_entries(
+                &self.config.keybinds.keybinds,
+                self.config.keybinds.prefix,
+            ),
+            query,
+        )
+    }
+
+    pub(super) fn move_command_palette_selection(&mut self, delta: isize) {
+        let query = match self.overlay.as_ref() {
+            Some(ClientShellOverlay::CommandPalette(palette)) => palette.query.clone(),
+            _ => return,
+        };
+        let matches_len = self.command_palette_matches(&query).len();
+        let Some(ClientShellOverlay::CommandPalette(palette)) = self.overlay.as_mut() else {
+            return;
+        };
+        if matches_len == 0 {
+            palette.selected = 0;
+            return;
+        }
+        let next = (palette.selected as isize + delta).clamp(0, matches_len as isize - 1) as usize;
+        palette.selected = next;
+    }
+
+    pub(super) fn accept_command_palette_selection(&mut self, outcome: &mut ClientShellInput) {
+        let (query, selected) = match self.overlay.as_ref() {
+            Some(ClientShellOverlay::CommandPalette(palette)) => {
+                (palette.query.clone(), palette.selected)
+            }
+            _ => return,
+        };
+        // Close before dispatching: some actions (e.g. Settings) open their
+        // own overlay, and dispatching first would close that instead.
+        let Some(entry) = self
+            .command_palette_matches(&query)
+            .into_iter()
+            .nth(selected)
+        else {
+            self.overlay = None;
+            return;
+        };
+        self.overlay = None;
+        self.record_binding(crate::input::KeybindMatch::Action(entry.action), outcome);
+    }
+
     pub(super) fn toggle_selected_navigator_workspace(&mut self) {
         let workspace_key = self.overlay.as_ref().and_then(|overlay| match overlay {
             ClientShellOverlay::Navigator(navigator) => {
@@ -460,6 +517,13 @@ impl ClientShellState {
                 help.query
                     .extend(text.chars().filter(|character| !character.is_control()));
                 help.scroll = 0;
+                true
+            }
+            Some(ClientShellOverlay::CommandPalette(palette)) => {
+                palette
+                    .query
+                    .extend(text.chars().filter(|character| !character.is_control()));
+                palette.selected = 0;
                 true
             }
             Some(ClientShellOverlay::Navigator(navigator)) if navigator.search_focused => {
@@ -783,6 +847,54 @@ impl ClientShellState {
                 self.toggle_selected_navigator_workspace();
                 outcome.repaint = true;
                 return;
+            }
+            return;
+        }
+
+        if matches!(self.overlay, Some(ClientShellOverlay::CommandPalette(_))) {
+            let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+            if code == KeyCode::Esc {
+                self.overlay = None;
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Enter {
+                self.accept_command_palette_selection(outcome);
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Up
+                || (code == KeyCode::Char('p') && modifiers.contains(KeyModifiers::CONTROL))
+            {
+                self.move_command_palette_selection(-1);
+                outcome.repaint = true;
+                return;
+            }
+            if code == KeyCode::Down
+                || (code == KeyCode::Char('n') && modifiers.contains(KeyModifiers::CONTROL))
+            {
+                self.move_command_palette_selection(1);
+                outcome.repaint = true;
+                return;
+            }
+            if let Some(ClientShellOverlay::CommandPalette(palette)) = self.overlay.as_mut() {
+                if code == KeyCode::Char('u') && modifiers.contains(KeyModifiers::CONTROL) {
+                    palette.query.clear();
+                    palette.selected = 0;
+                } else if code == KeyCode::Backspace {
+                    palette.query.pop();
+                    palette.selected = 0;
+                } else if let KeyCode::Char(character) = code {
+                    if modifiers.difference(KeyModifiers::SHIFT).is_empty() {
+                        if let Some(text) = key.generated_text.as_deref() {
+                            palette.query.push_str(text);
+                        } else {
+                            palette.query.push(character);
+                        }
+                        palette.selected = 0;
+                    }
+                }
+                outcome.repaint = true;
             }
             return;
         }

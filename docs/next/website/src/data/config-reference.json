@@ -596,6 +596,12 @@
           "description": "Focus the currently visible notification target."
         },
         {
+          "key": "keys.command_palette",
+          "type": "keybinding",
+          "default": "\"prefix+/\"",
+          "description": "Open the command palette to search and run any keybound action."
+        },
+        {
           "key": "keys.previous_workspace",
           "type": "keybinding",
           "default": "unset",

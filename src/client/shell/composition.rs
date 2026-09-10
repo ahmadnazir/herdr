@@ -627,6 +627,8 @@ impl ClientShellState {
                 self.hits.help_scrollbar = rendered.help_scrollbar;
                 self.hits.help_scroll_metrics = rendered.help_scroll_metrics;
                 self.hits.help_max_scroll = rendered.help_max_scroll;
+                self.hits.command_palette_popup = rendered.command_palette_popup;
+                self.hits.command_palette_rows = rendered.command_palette_rows;
                 self.hits.settings_popup = rendered.settings_popup;
                 self.hits.settings_tabs = rendered.settings_tabs;
                 self.hits.settings_choices = rendered.settings_choices;

@@ -1563,6 +1563,64 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::CommandPalette(_))) {
+            let row_hit = self
+                .hits
+                .command_palette_rows
+                .iter()
+                .find(|(rect, _)| super::contains(*rect, point))
+                .cloned();
+            match mouse.kind {
+                MouseEventKind::Moved => {
+                    if let Some((_, action)) = row_hit {
+                        let query = match self.overlay.as_ref() {
+                            Some(ClientShellOverlay::CommandPalette(palette)) => {
+                                palette.query.clone()
+                            }
+                            _ => return,
+                        };
+                        let entries = crate::input::filter_palette_entries(
+                            crate::input::palette_entries(
+                                &self.config.keybinds.keybinds,
+                                self.config.keybinds.prefix,
+                            ),
+                            &query,
+                        );
+                        if let Some(index) = entries.iter().position(|entry| entry.action == action)
+                        {
+                            if let Some(ClientShellOverlay::CommandPalette(palette)) =
+                                self.overlay.as_mut()
+                            {
+                                palette.selected = index;
+                            }
+                        }
+                        outcome.repaint = true;
+                    }
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some((_, action)) = row_hit {
+                        self.overlay = None;
+                        self.record_binding(crate::input::KeybindMatch::Action(action), outcome);
+                        outcome.repaint = true;
+                    } else if super::contains(self.hits.overlay_cancel, point)
+                        || !super::contains(self.hits.command_palette_popup, point)
+                    {
+                        self.overlay = None;
+                        outcome.repaint = true;
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    self.move_command_palette_selection(-1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    self.move_command_palette_selection(1);
+                    outcome.repaint = true;
+                }
+                _ => {}
+            }
+            return;
+        }
         if matches!(self.overlay, Some(ClientShellOverlay::Navigator(_))) {
             let row_hit = self
                 .hits

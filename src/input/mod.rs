@@ -1,3 +1,4 @@
+mod command_palette;
 mod encode;
 mod keybind_help;
 mod keybindings;
@@ -6,6 +7,7 @@ mod model;
 pub(crate) mod mouse;
 mod parse;
 
+pub(crate) use command_palette::{filter_palette_entries, palette_entries, PaletteEntry};
 #[allow(unused_imports)]
 pub use encode::{
     encode_cursor_key, encode_key, encode_mouse_button, encode_mouse_scroll, encode_terminal_key,
