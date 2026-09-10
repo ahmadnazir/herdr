@@ -17,6 +17,8 @@ pub(crate) struct OverlayRender {
     pub(crate) help_scrollbar: Rect,
     pub(crate) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
     pub(crate) help_max_scroll: usize,
+    pub(crate) command_palette_popup: Rect,
+    pub(crate) command_palette_rows: Vec<(Rect, crate::input::KeybindAction)>,
     pub(crate) settings_popup: Rect,
     pub(crate) settings_tabs: Vec<(Rect, ClientSettingsSection)>,
     pub(crate) settings_choices: Vec<(Rect, usize)>,
@@ -60,6 +62,7 @@ pub(crate) fn render_client_overlay(
         ClientShellOverlay::Rename(v) => render_rename_overlay(b, v, p),
         ClientShellOverlay::ConfirmClose(v) => render_confirm_close_overlay(b, v, p),
         ClientShellOverlay::Help(v) => render_help_overlay(b, v, k, p),
+        ClientShellOverlay::CommandPalette(v) => render_command_palette_overlay(b, v, k, p),
         ClientShellOverlay::Navigator(v) => {
             render_navigator_overlay(b, v, endpoints, active_endpoint_id, p)
         }
@@ -943,7 +946,7 @@ fn help_lines(
     );
     let key_width = groups
         .iter()
-        .flat_map(|(_, entries)| entries.iter().map(|(key, _)| key.chars().count()))
+        .flat_map(|(_, entries)| entries.iter().map(|(key, _, _)| key.chars().count()))
         .max()
         .unwrap_or(8);
     if groups.is_empty() {
@@ -969,7 +972,7 @@ fn help_lines(
                     .add_modifier(Modifier::BOLD),
             )),
         ));
-        for (key, label) in entries {
+        for (key, label, _action) in entries {
             let padded_key = format!(" {key:<key_width$} ");
             let width = padded_key.chars().count() + label.chars().count();
             lines.push((
@@ -1127,6 +1130,150 @@ fn render_help_overlay(
         ..OverlayRender::default()
     })
 }
+
+fn render_command_palette_overlay(
+    b: &mut Buffer,
+    v: &ClientCommandPaletteOverlay,
+    k: &LiveKeybindConfig,
+    p: &Palette,
+) -> Option<OverlayRender> {
+    let q = popup(b.area, 70, 20)?;
+    let i = panel(b, q, p.accent, p.panel_bg)?;
+    if i.width < 20 || i.height < 6 {
+        return None;
+    }
+    put_text(
+        b,
+        i.x,
+        i.y,
+        i.width,
+        "command palette",
+        Style::default()
+            .fg(p.text)
+            .bg(p.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    let close = Rect::new(i.right() - 13, i.y, 13, 1);
+    button(
+        b,
+        close,
+        " esc close ",
+        Style::default()
+            .fg(contrast(p))
+            .bg(p.accent)
+            .add_modifier(Modifier::BOLD),
+    );
+    let sy = i.y + 1;
+    put_text(
+        b,
+        i.x,
+        sy,
+        i.width,
+        &format!(" / {}", v.query),
+        Style::default().fg(p.text).bg(p.panel_bg),
+    );
+    put_text(
+        b,
+        i.x,
+        sy + 1,
+        i.width,
+        &"─".repeat(i.width as usize),
+        Style::default().fg(p.surface1).bg(p.panel_bg),
+    );
+
+    let body = Rect::new(i.x, i.y + 3, i.width, i.height.saturating_sub(5));
+    let entries = crate::input::filter_palette_entries(
+        crate::input::palette_entries(&k.keybinds, k.prefix),
+        &v.query,
+    );
+    let viewport = usize::from(body.height.max(1));
+    let mut row_hits = Vec::new();
+    if entries.is_empty() {
+        put_text(
+            b,
+            body.x,
+            body.y,
+            body.width,
+            " no matching commands",
+            Style::default().fg(p.overlay1).bg(p.panel_bg),
+        );
+    } else {
+        let selected = v.selected.min(entries.len() - 1);
+        let max_scroll = entries.len().saturating_sub(viewport);
+        let scroll = selected
+            .saturating_sub(viewport.saturating_sub(1))
+            .min(max_scroll);
+        let key_width = entries
+            .iter()
+            .skip(scroll)
+            .take(viewport)
+            .map(|entry| entry.key.chars().count())
+            .max()
+            .unwrap_or(0);
+        for (vis, (ix, entry)) in entries
+            .iter()
+            .enumerate()
+            .skip(scroll)
+            .take(viewport)
+            .enumerate()
+        {
+            let rect = Rect::new(body.x, body.y + vis as u16, body.width, 1);
+            row_hits.push((rect, entry.action));
+            let st = if ix == selected {
+                Style::default()
+                    .fg(contrast(p))
+                    .bg(p.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(p.text).bg(p.panel_bg)
+            };
+            b.set_style(rect, st);
+            put_text(
+                b,
+                rect.x,
+                rect.y,
+                rect.width,
+                &format!(" {}", entry.label.as_ref()),
+                st,
+            );
+            let key_style = if ix == selected {
+                st
+            } else {
+                Style::default().fg(p.overlay1).bg(p.panel_bg)
+            };
+            put_right_text(
+                b,
+                rect,
+                rect.y,
+                &format!("{:>key_width$} ", entry.key),
+                key_style,
+            );
+        }
+    }
+
+    put_text(
+        b,
+        i.x,
+        i.bottom() - 1,
+        i.width,
+        " move \u{2191}\u{2193}/ctrl+n/p \u{b7} run enter \u{b7} close esc",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+
+    Some(OverlayRender {
+        cancel: close,
+        command_palette_popup: i,
+        command_palette_rows: row_hits,
+        cursor: Some(crate::protocol::CursorState {
+            x: (i.x + 3 + display_width(&v.query)).min(i.right() - 1),
+            y: sy,
+            visible: true,
+            shape: 0,
+        }),
+        ..OverlayRender::default()
+    })
+}
+
 fn render_confirm_close_overlay(
     b: &mut Buffer,
     c: &ClientConfirmCloseOverlay,

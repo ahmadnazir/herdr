@@ -183,6 +183,8 @@ pub(super) struct ShellHitMap {
     pub(super) help_scrollbar: Rect,
     pub(super) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
     pub(super) help_max_scroll: usize,
+    pub(super) command_palette_popup: Rect,
+    pub(super) command_palette_rows: Vec<(Rect, crate::input::KeybindAction)>,
     pub(super) settings_popup: Rect,
     pub(super) settings_tabs: Vec<(Rect, ClientSettingsSection)>,
     pub(super) settings_choices: Vec<(Rect, usize)>,
@@ -335,6 +337,7 @@ pub(super) enum ClientShellOverlayKind {
     Rename,
     ConfirmClose,
     Help,
+    CommandPalette,
     Navigator,
     WorktreeCreate,
     WorktreeOpen,
@@ -429,6 +432,12 @@ pub(super) struct ClientHelpOverlay {
     pub(super) query: String,
     pub(super) search_focused: bool,
     pub(super) scroll: usize,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientCommandPaletteOverlay {
+    pub(super) query: String,
+    pub(super) selected: usize,
 }
 
 #[derive(Debug)]
@@ -633,6 +642,7 @@ pub(super) enum ClientShellOverlay {
     Rename(ClientRenameOverlay),
     ConfirmClose(ClientConfirmCloseOverlay),
     Help(ClientHelpOverlay),
+    CommandPalette(ClientCommandPaletteOverlay),
     Navigator(ClientNavigatorOverlay),
     WorktreeCreate(ClientWorktreeCreateOverlay),
     WorktreeOpen(ClientWorktreeOpenOverlay),
@@ -651,6 +661,7 @@ impl ClientShellOverlay {
             Self::Rename(_) => ClientShellOverlayKind::Rename,
             Self::ConfirmClose(_) => ClientShellOverlayKind::ConfirmClose,
             Self::Help(_) => ClientShellOverlayKind::Help,
+            Self::CommandPalette(_) => ClientShellOverlayKind::CommandPalette,
             Self::Navigator(_) => ClientShellOverlayKind::Navigator,
             Self::WorktreeCreate(_) => ClientShellOverlayKind::WorktreeCreate,
             Self::WorktreeOpen(_) => ClientShellOverlayKind::WorktreeOpen,

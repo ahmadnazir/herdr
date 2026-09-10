@@ -757,6 +757,91 @@ fn help_overlay_restores_released_search_scroll_and_custom_binding_behavior() {
 }
 
 #[test]
+fn command_palette_filters_and_closes_before_dispatching_selected_action() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut open = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::CommandPalette),
+        &mut open,
+    );
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::CommandPalette(_))
+    ));
+    let initial = state.compose(106, 30).expect("command palette overlay");
+    let text = initial
+        .cells
+        .chunks(initial.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("command palette"));
+    assert!(text.contains("keybinds"));
+
+    state.handle_input_bytes(b"settings");
+    let filtered = state.compose(106, 30).expect("filtered command palette");
+    let text = filtered
+        .cells
+        .chunks(filtered.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("settings"));
+    assert!(!text.contains("keybinds"));
+
+    // Enter dispatches the sole match (Settings) and must close the palette
+    // before the action runs, or the palette's own close would clobber the
+    // overlay the action just opened.
+    state.handle_input_bytes(b"\r");
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::Settings(_))
+    ));
+}
+
+#[test]
+fn command_palette_shows_no_matches_message_and_escape_closes() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut open = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::CommandPalette),
+        &mut open,
+    );
+    state.compose(106, 30).expect("command palette overlay");
+
+    state.handle_input_bytes(b"no-such-command");
+    let empty = state
+        .compose(106, 30)
+        .expect("empty command palette search");
+    let text = empty
+        .cells
+        .chunks(empty.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("no matching commands"));
+
+    state.handle_input_bytes(b"\x1b");
+    assert!(state.overlay.is_none());
+}
+
+#[test]
 fn resize_mode_reuses_endpoint_resize_and_stays_active_until_done() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
