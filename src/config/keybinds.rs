@@ -1264,6 +1264,12 @@ pub(crate) fn parse_key_combo(s: &str) -> Option<KeyCombo> {
         "right" => KeyCode::Right,
         "up" => KeyCode::Up,
         "down" => KeyCode::Down,
+        "pageup" | "page_up" | "page-up" => KeyCode::PageUp,
+        "pagedown" | "page_down" | "page-down" => KeyCode::PageDown,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "insert" | "ins" => KeyCode::Insert,
+        "delete" | "del" => KeyCode::Delete,
         "minus" => KeyCode::Char('-'),
         "comma" => KeyCode::Char(','),
         "period" => KeyCode::Char('.'),
@@ -1541,6 +1547,57 @@ prefix = "ö"
             parse_key_combo("shift+tab"),
             Some((KeyCode::BackTab, KeyModifiers::empty()))
         );
+    }
+
+    #[test]
+    fn parse_page_and_edit_navigation_keys_with_and_without_ctrl() {
+        assert_eq!(
+            parse_key_combo("pageup"),
+            Some((KeyCode::PageUp, KeyModifiers::empty()))
+        );
+        assert_eq!(
+            parse_key_combo("ctrl+pagedown"),
+            Some((KeyCode::PageDown, KeyModifiers::CONTROL))
+        );
+        assert_eq!(
+            parse_key_combo("ctrl+pageup"),
+            Some((KeyCode::PageUp, KeyModifiers::CONTROL))
+        );
+        assert_eq!(
+            parse_key_combo("home"),
+            Some((KeyCode::Home, KeyModifiers::empty()))
+        );
+        assert_eq!(
+            parse_key_combo("end"),
+            Some((KeyCode::End, KeyModifiers::empty()))
+        );
+        assert_eq!(
+            parse_key_combo("insert"),
+            Some((KeyCode::Insert, KeyModifiers::empty()))
+        );
+        assert_eq!(
+            parse_key_combo("delete"),
+            Some((KeyCode::Delete, KeyModifiers::empty()))
+        );
+    }
+
+    #[test]
+    fn page_and_edit_navigation_keys_round_trip_through_format_key_combo() {
+        for combo in [
+            (KeyCode::PageUp, KeyModifiers::CONTROL),
+            (KeyCode::PageDown, KeyModifiers::CONTROL),
+            (KeyCode::Home, KeyModifiers::empty()),
+            (KeyCode::End, KeyModifiers::empty()),
+            (KeyCode::Insert, KeyModifiers::empty()),
+            (KeyCode::Delete, KeyModifiers::empty()),
+        ] {
+            let formatted = format_key_combo(combo);
+            assert_eq!(
+                parse_key_combo(&formatted),
+                Some(combo),
+                "round trip failed for {formatted:?}"
+            );
+        }
     }
 
     #[test]
